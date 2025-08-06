@@ -91,7 +91,7 @@ namespace RBX_Alt_Manager
         public Account(string Cookie, string AccountJSON = null)
         {
             SecurityToken = Cookie;
-            
+
             AccountJSON ??= AccountManager.MainClient.Execute(MakeRequest("my/account/json", Method.Get)).Content;
 
             if (!string.IsNullOrEmpty(AccountJSON) && Utilities.TryParseJson(AccountJSON, out AccountJson Data))
@@ -463,7 +463,7 @@ namespace RBX_Alt_Manager
 
                 Response = "Unblocking Everyone";
 
-                return true; 
+                return true;
             }
 
             Response = "Failed to unblock everyone";
@@ -502,7 +502,7 @@ namespace RBX_Alt_Manager
             return false;
         }
 
-        public async Task<string> JoinServer(long PlaceID, string JobID = "", bool FollowUser = false, bool JoinVIP = false, bool Internal = false) // oh god i am not refactoring everything to be async im sorry
+        public async Task<string> JoinServer(long PlaceID, string JobID = "", bool FollowUser = false, bool JoinVIP = false, bool Internal = false, string LaunchData = "") // Added LaunchData parameter
         {
             if (string.IsNullOrEmpty(BrowserTrackerID))
             {
@@ -524,7 +524,7 @@ namespace RBX_Alt_Manager
                 {
                     try
                     {
-                        foreach(Process proc in Process.GetProcessesByName("RobloxPlayerBeta"))
+                        foreach (Process proc in Process.GetProcessesByName("RobloxPlayerBeta"))
                         {
                             var TrackerMatch = Regex.Match(proc.GetCommandLine(), @"\-b (\d+)");
                             string TrackerID = TrackerMatch.Success ? TrackerMatch.Groups[1].Value : string.Empty;
@@ -627,13 +627,21 @@ namespace RBX_Alt_Manager
                     await Task.Run(() =>
                     {
                         ProcessStartInfo Roblox = new ProcessStartInfo(RPath);
-                        
-                        if (JoinVIP)
+
+                        // Handle LaunchData for old join method
+                        if (!string.IsNullOrEmpty(LaunchData))
+                        {
+                            string encodedLaunchData = HttpUtility.UrlEncode(LaunchData);
+                            Roblox.Arguments = $"roblox://experiences/start?placeId={PlaceID}&launchData={encodedLaunchData}";
+                        }
+                        else if (JoinVIP)
                             Roblox.Arguments = string.Format("--app -t {0} -j \"https://assetgame.roblox.com/game/PlaceLauncher.ashx?request=RequestPrivateGame&placeId={1}&accessCode={2}&linkCode={3}\"", Ticket, PlaceID, AccessCode, LinkCode);
                         else if (FollowUser)
                             Roblox.Arguments = string.Format("--app -t {0} -j \"https://assetgame.roblox.com/game/PlaceLauncher.ashx?request=RequestFollowUser&userId={1}\"", Ticket, PlaceID);
                         else
                             Roblox.Arguments = string.Format("--app -t {0} -j \"https://assetgame.roblox.com/game/PlaceLauncher.ashx?request=RequestGame{3}&placeId={1}{2}&isPlayTogetherGame=false\"", Ticket, PlaceID, "&gameId=" + JobID, string.IsNullOrEmpty(JobID) ? "" : "Job");
+
+                        Process.Start(Roblox);
                     });
 
                     _ = Task.Run(AdjustWindowPosition);
@@ -648,14 +656,21 @@ namespace RBX_Alt_Manager
                         {
                             ProcessStartInfo LaunchInfo = new ProcessStartInfo();
 
-                            if (JoinVIP)
+                            // Handle LaunchData for new join method
+                            if (!string.IsNullOrEmpty(LaunchData))
+                            {
+                                string encodedLaunchData = HttpUtility.UrlEncode(LaunchData);
+                                LaunchInfo.FileName = $"roblox://experiences/start?placeId={PlaceID}&launchData={encodedLaunchData}";
+                            }
+                            else if (JoinVIP)
                                 LaunchInfo.FileName = $"roblox-player:1+launchmode:play+gameinfo:{Ticket}+launchtime:{LaunchTime}+placelauncherurl:{HttpUtility.UrlEncode($"https://assetgame.roblox.com/game/PlaceLauncher.ashx?request=RequestPrivateGame&placeId={PlaceID}&accessCode={AccessCode}&linkCode={LinkCode}")}+browsertrackerid:{BrowserTrackerID}+robloxLocale:en_us+gameLocale:en_us+channel:+LaunchExp:InApp";
                             else if (FollowUser)
                                 LaunchInfo.FileName = $"roblox-player:1+launchmode:play+gameinfo:{Ticket}+launchtime:{LaunchTime}+placelauncherurl:{HttpUtility.UrlEncode($"https://assetgame.roblox.com/game/PlaceLauncher.ashx?request=RequestFollowUser&userId={PlaceID}")}+browsertrackerid:{BrowserTrackerID}+robloxLocale:en_us+gameLocale:en_us+channel:+LaunchExp:InApp";
                             else
                                 LaunchInfo.FileName = $"roblox-player:1+launchmode:play+gameinfo:{Ticket}+launchtime:{LaunchTime}+placelauncherurl:{HttpUtility.UrlEncode($"https://assetgame.roblox.com/game/PlaceLauncher.ashx?request=RequestGame{(string.IsNullOrEmpty(JobID) ? "" : "Job")}&browserTrackerId={BrowserTrackerID}&placeId={PlaceID}{(string.IsNullOrEmpty(JobID) ? "" : ("&gameId=" + JobID))}&isPlayTogetherGame=false{(AccountManager.IsTeleport ? "&isTeleport=true" : "")}")}+browsertrackerid:{BrowserTrackerID}+robloxLocale:en_us+gameLocale:en_us+channel:+LaunchExp:InApp";
+
                             Process Launcher = Process.Start(LaunchInfo);
-                            
+
                             Launcher.WaitForExit();
 
                             AccountManager.Instance.NextAccount();

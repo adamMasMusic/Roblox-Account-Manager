@@ -115,16 +115,21 @@ namespace RBX_Alt_Manager
 
             if (!GetCSRFToken(out string Token)) return false;
 
-            RestRequest request = MakeRequest("/v1/authentication-ticket/", Method.Post).AddHeader("X-CSRF-TOKEN", Token).AddHeader("Referer", "https://www.roblox.com/games/4924922222/Brookhaven-RP");
+            RestRequest request = MakeRequest("/v1/authentication-ticket/", Method.Post)
+                .AddHeader("X-CSRF-TOKEN", Token)
+                .AddHeader("Referer", "https://www.roblox.com/games/4924922222/Brookhaven-RP")
+                .AddHeader("Content-Type", "application/json")
+                .AddStringBody("{}", DataFormat.Json);
 
             RestResponse response = AccountManager.AuthClient.Execute(request);
+
+            Program.Logger.Info($"AuthTicket Response: [{response.StatusCode}] {response.Content}");
 
             Parameter TicketHeader = response.Headers.FirstOrDefault(x => x.Name == "rbx-authentication-ticket");
 
             if (TicketHeader != null)
             {
                 Ticket = (string)TicketHeader.Value;
-
                 return true;
             }
 
@@ -502,18 +507,26 @@ namespace RBX_Alt_Manager
             return false;
         }
 
-        public async Task<string> JoinServer(long PlaceID, string JobID = "", bool FollowUser = false, bool JoinVIP = false, bool Internal = false, string LaunchData = "") // Added LaunchData parameter
+        public async Task<string> JoinServer(
+            long PlaceID,
+            string JobID = "",
+            bool FollowUser = false,
+            bool JoinVIP = false,
+            bool Internal = false,
+            string LaunchData = "" // Added LaunchData parameter
+        )
         {
             if (string.IsNullOrEmpty(BrowserTrackerID))
             {
                 Random r = new Random();
-
-                BrowserTrackerID = r.Next(100000, 175000).ToString() + r.Next(100000, 900000).ToString(); // oh god this is ugly
+                BrowserTrackerID = r.Next(100000, 175000).ToString() + r.Next(100000, 900000).ToString();
             }
 
-            try { ClientSettingsPatcher.PatchSettings(); } catch (Exception Ex) { Program.Logger.Error($"Failed to patch ClientAppSettings: {Ex}"); }
+            try { ClientSettingsPatcher.PatchSettings(); }
+            catch (Exception Ex) { Program.Logger.Error($"Failed to patch ClientAppSettings: {Ex}"); }
 
-            if (!GetCSRFToken(out string Token)) return $"ERROR: Account Session Expired, re-add the account or try again. (Invalid X-CSRF-Token)\n{Token}";
+            if (!GetCSRFToken(out string Token))
+                return $"ERROR: Account Session Expired, re-add the account or try again. (Invalid X-CSRF-Token)\n{Token}";
 
             if (AccountManager.ShuffleJobID && string.IsNullOrEmpty(JobID))
                 JobID = await Utilities.GetRandomJobId(PlaceID);
@@ -531,11 +544,11 @@ namespace RBX_Alt_Manager
 
                             if (TrackerID == BrowserTrackerID)
                             {
-                                try // ignore ObjectDisposedExceptions
+                                try
                                 {
                                     proc.CloseMainWindow();
                                     await Task.Delay(250);
-                                    proc.CloseMainWindow(); // Allows Roblox to disconnect from the server so we don't get the "Same account launched" error
+                                    proc.CloseMainWindow();
                                     await Task.Delay(250);
                                     proc.Kill();
                                 }
@@ -551,7 +564,9 @@ namespace RBX_Alt_Manager
 
                 if (!string.IsNullOrEmpty(LinkCode))
                 {
-                    RestRequest request = MakeRequest(string.Format("/games/{0}?privateServerLinkCode={1}", PlaceID, LinkCode), Method.Get).AddHeader("X-CSRF-TOKEN", Token).AddHeader("Referer", "https://www.roblox.com/games/4924922222/Brookhaven-RP");
+                    RestRequest request = MakeRequest(string.Format("/games/{0}?privateServerLinkCode={1}", PlaceID, LinkCode), Method.Get)
+                        .AddHeader("X-CSRF-TOKEN", Token)
+                        .AddHeader("Referer", "https://www.roblox.com/games/4924922222/Brookhaven-RP");
 
                     RestResponse response = await AccountManager.MainClient.ExecuteAsync(request);
 
@@ -563,68 +578,43 @@ namespace RBX_Alt_Manager
                             AccessCode = Code;
                         }
                     }
-                    else if (response.StatusCode == HttpStatusCode.Redirect) // thx wally (p.s. i hate wally)
-                    {
-                        request = MakeRequest(string.Format("/games/{0}?privateServerLinkCode={1}", PlaceID, LinkCode), Method.Get).AddHeader("X-CSRF-TOKEN", Token).AddHeader("Referer", "https://www.roblox.com/games/4924922222/Brookhaven-RP");
-
-                        RestResponse result = await AccountManager.Web13Client.ExecuteAsync(request);
-
-                        if (result.StatusCode == HttpStatusCode.OK)
-                        {
-                            if (ParseAccessCode(response, out string Code))
-                            {
-                                JoinVIP = true;
-                                AccessCode = Code;
-                            }
-                        }
-                    }
-                }
-
-                if (JoinVIP)
-                {
-                    var request = MakeRequest("/account/settings/private-server-invite-privacy").AddHeader("X-CSRF-TOKEN", Token).AddHeader("Referer", "https://www.roblox.com/my/account");
-
-                    RestResponse result = await AccountManager.MainClient.ExecuteAsync(request);
-
-                    if (result.IsSuccessful && !result.Content.Contains("\"AllUsers\""))
-                    {
-                        AccountManager.Instance.InvokeIfRequired(() =>
-                        {
-                            if (Utilities.YesNoPrompt("Roblox Account Manager", "Account Manager has detected your account's privacy settings do not allow you to join private servers.", "Would you like to change this setting to Everyone now?"))
-                            {
-                                if (!CheckPin(true)) return;
-
-                                var setRequest = MakeRequest("/account/settings/private-server-invite-privacy", Method.Post);
-
-                                setRequest.AddHeader("X-CSRF-TOKEN", Token);
-                                setRequest.AddHeader("Referer", "https://www.roblox.com/my/account");
-                                setRequest.AddHeader("Content-Type", "application/x-www-form-urlencoded");
-
-                                setRequest.AddParameter("PrivateServerInvitePrivacy", "AllUsers");
-
-                                AccountManager.MainClient.Execute(setRequest);
-                            }
-                        });
-                    }
                 }
 
                 double LaunchTime = Math.Floor((DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalSeconds * 1000);
 
-                if (AccountManager.UseOldJoin)
+                // Encode LaunchData if provided
+                string launchDataParam = "";
+                if (!string.IsNullOrWhiteSpace(LaunchData))
                 {
-                    string RPath = @"C:\Program Files (x86)\Roblox\Versions\" + AccountManager.CurrentVersion;
+                    try
+                    {
+                        string raw = LaunchData.Trim();
 
-                    if (!Directory.Exists(RPath))
-                        RPath = Path.Combine(Environment.GetEnvironmentVariable("LocalAppData"), @"Roblox\Versions\" + AccountManager.CurrentVersion);
+                        if (raw.StartsWith("&launchData=", StringComparison.OrdinalIgnoreCase))
+                            raw = raw.Substring("&launchData=".Length);
 
-                    if (!Directory.Exists(RPath))
-                        return "ERROR: Failed to find ROBLOX executable";
+                        if (raw.Contains("%7B") || raw.Contains("%22"))
+                            raw = HttpUtility.UrlDecode(raw);
 
-                    RPath += @"\RobloxPlayerBeta.exe";
+                        var parsed = Newtonsoft.Json.Linq.JToken.Parse(raw);
 
-                    AccountManager.Instance.NextAccount();
+                        string compactJson = parsed.ToString(Newtonsoft.Json.Formatting.None);
 
-                    await Task.Run(() =>
+                        launchDataParam = "&launchData=" + HttpUtility.UrlEncode(compactJson);
+                    }
+                    catch (Exception ex)
+                    {
+                        Program.Logger.Error($"Invalid LaunchData JSON: {ex.Message}");
+                        MessageBox.Show(
+                            "Invalid LaunchData JSON format.\nMake sure it's valid JSON like: {\"psCode\":\"lanrp\"}",
+                            "Error", MessageBoxButtons.OK, MessageBoxIcon.Error
+                        );
+                    }
+                }
+
+                await Task.Run(() =>
+                {
+                    try
                     {
                         ProcessStartInfo Roblox = new ProcessStartInfo(RPath);
 
@@ -677,19 +667,34 @@ namespace RBX_Alt_Manager
 
                             _ = Task.Run(AdjustWindowPosition);
                         }
-                        catch (Exception x)
+                        else
                         {
-                            Utilities.InvokeIfRequired(AccountManager.Instance, () => MessageBox.Show($"ERROR: Failed to launch Roblox! Try re-installing Roblox.\n\n{x.Message}{x.StackTrace}", "Roblox Account Manager", MessageBoxButtons.OK, MessageBoxIcon.Error));
-                            AccountManager.Instance.CancelLaunching();
-                            AccountManager.Instance.NextAccount();
+                            LaunchInfo.FileName =
+                                $"roblox-player:1+launchmode:play+gameinfo:{Ticket}+launchtime:{LaunchTime}" +
+                                $"+placelauncherurl:{HttpUtility.UrlEncode($"https://assetgame.roblox.com/game/PlaceLauncher.ashx?request=RequestGame{(string.IsNullOrEmpty(JobID) ? "" : "Job")}&browserTrackerId={BrowserTrackerID}&placeId={PlaceID}{(string.IsNullOrEmpty(JobID) ? "" : ("&gameId=" + JobID))}&isPlayTogetherGame=false{(AccountManager.IsTeleport ? "&isTeleport=true" : "")}{launchDataParam}")}" +
+                                $"+browsertrackerid:{BrowserTrackerID}+robloxLocale:en_us+gameLocale:en_us";
                         }
-                    });
 
-                    return "Success";
-                }
+                        Process.Start(LaunchInfo);
+                        AccountManager.Instance.NextAccount();
+                        _ = Task.Run(AdjustWindowPosition);
+                    }
+                    catch (Exception x)
+                    {
+                        Utilities.InvokeIfRequired(AccountManager.Instance, () =>
+                            MessageBox.Show($"ERROR: Failed to launch Roblox! Try re-installing Roblox.\n\n{x.Message}{x.StackTrace}",
+                            "Roblox Account Manager", MessageBoxButtons.OK, MessageBoxIcon.Error));
+                        AccountManager.Instance.CancelLaunching();
+                        AccountManager.Instance.NextAccount();
+                    }
+                });
+
+                return "Success";
             }
             else
-                return "ERROR: Invalid Authentication Ticket, re-add the account or try again\n(Failed to get Authentication Ticket, Roblox has probably signed you out)";
+            {
+                return "ERROR: Invalid Authentication Ticket, re-add the account or try again";
+            }
         }
 
         public async void AdjustWindowPosition()

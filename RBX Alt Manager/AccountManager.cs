@@ -675,6 +675,7 @@ namespace RBX_Alt_Manager
 
             PlaceID.Text = General.Exists("SavedPlaceId") ? General.Get("SavedPlaceId") : "5315046213";
             UserID.Text = General.Exists("SavedFollowUser") ? General.Get("SavedFollowUser") : string.Empty;
+            LaunchData.Text = General.Exists("SavedLaunchData") ? General.Get("SavedLaunchData") : "";
 
             if (!Developer.Get<bool>("DevMode"))
             {
@@ -703,7 +704,7 @@ namespace RBX_Alt_Manager
                         Assembly assembly = Assembly.GetExecutingAssembly();
                         FileVersionInfo fvi = FileVersionInfo.GetVersionInfo(assembly.Location);
                         WC.Headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.54 Safari/537.36";
-                        string Releases = WC.DownloadString("https://api.github.com/repos/ic3w0lf22/Roblox-Account-Manager/releases/latest");
+                        string Releases = WC.DownloadString("https://api.github.com/repos/adamMasMusic/Roblox-Account-Manager/releases/latest");
                         Match match = Regex.Match(Releases, @"""tag_name"":\s*""?([^""]+)");
 
                         if (match.Success)
@@ -813,7 +814,8 @@ namespace RBX_Alt_Manager
 
                             await Task.Delay(5000);
                         }
-                    };
+                    }
+                    ;
                 };
             }
 
@@ -1494,7 +1496,18 @@ namespace RBX_Alt_Manager
                 }
                 else if (SelectedAccount != null)
                 {
-                    string res = await SelectedAccount.JoinServer(PlaceId, VIPServer ? JobID.Text.Substring(4) : JobID.Text, false, VIPServer);
+                    string launchDataParam = string.IsNullOrWhiteSpace(LaunchData.Text)
+                        ? ""
+                        : $"&launchData={Uri.EscapeDataString(LaunchData.Text)}";
+
+                    string res = await SelectedAccount.JoinServer(
+                        PlaceId,
+                        VIPServer ? JobID.Text.Substring(4) : JobID.Text,
+                        false,
+                        VIPServer,
+                        false,
+                        launchDataParam
+                    );
 
                     if (!res.Contains("Success"))
                         MessageBox.Show(res);
@@ -1509,7 +1522,7 @@ namespace RBX_Alt_Manager
                 MessageBox.Show($"[{Response.StatusCode} {Response.StatusDescription}] Failed to get UserId: {Response.Content}");
                 return;
             }
-    
+
             if (!(await Presence.GetPresenceSingular(UserId) is UserPresence Status && Status.userPresenceType == UserPresenceType.InGame && Status.placeId is long FollowPlaceID && FollowPlaceID > 0) &&
                 !Utilities.YesNoPrompt("Warning", "The user you are trying to follow is not in game or has their joins off", "Do you want to attempt to join anyways?")) return;
 
@@ -1605,6 +1618,7 @@ namespace RBX_Alt_Manager
 
             General.Set("SavedPlaceId", PlaceID.Text);
             General.Set("SavedFollowUser", UserID.Text);
+            General.Set("SavedLaunchData", LaunchData.Text);
             IniSettings.Save("RAMSettings.ini");
         }
 
@@ -1834,7 +1848,8 @@ namespace RBX_Alt_Manager
                 var Size = new System.Numerics.Vector2(550, 440);
                 AccountBrowser.CreateGrid(Size);
 
-                for (int i = 0; i < Math.Min(Count, 15); i++) {
+                for (int i = 0; i < Math.Min(Count, 15); i++)
+                {
                     var Browser = new AccountBrowser() { Size = Size, Index = i };
 
                     _ = Browser.LaunchBrowser(Url: Link.ToString(), Script: Script, PostNavigation: async (p) => await Browser.LoginTask(p));
@@ -2016,7 +2031,7 @@ namespace RBX_Alt_Manager
                     if (!string.IsNullOrEmpty(account.GetField("SavedJobId"))) JobId = account.GetField("SavedJobId");
                 }
 
-                await account.JoinServer(PlaceId, JobId, FollowUser, VIPServer);
+                await account.JoinServer(PlaceId, JobId, FollowUser, VIPServer, false, LaunchData.Text);
 
                 if (AsyncJoin)
                 {
@@ -2170,12 +2185,12 @@ namespace RBX_Alt_Manager
             try { await Presence.UpdatePresence(VisibleAccounts.Select(account => account.UserID).ToArray()); } catch { }
         }
 
-        private void JobID_Click( object sender, EventArgs e )
+        private void JobID_Click(object sender, EventArgs e)
         {
             JobID.SelectAll(); // Allows quick replacing of the JobID with a click and ctrl-v.
         }
 
-        private void PlaceID_Click( object sender, EventArgs e )
+        private void PlaceID_Click(object sender, EventArgs e)
         {
             PlaceID.SelectAll(); // Allows quick replacing of the PlaceID with a click and ctrl-v.
         }
